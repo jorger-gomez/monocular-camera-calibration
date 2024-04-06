@@ -16,6 +16,7 @@
     python get-measurements.py -c 0 --z 50 -j calibration_data.json
 
 """
+# Import std libraries
 import numpy as np
 import cv2
 import os
@@ -209,6 +210,7 @@ def pipeline() -> None:
     global drawing
     args = user_arguments()
 
+    print('initializing camera please wait...')
     cam = initialize_camera(args)
     if cam is None:
         return  # If camera initialization failed, exit the function
@@ -279,6 +281,7 @@ def pipeline() -> None:
 
     cam.release()
     cv2.destroyAllWindows()
+    print('Program Finished')
 
 if __name__ == '__main__':
     pipeline()            
