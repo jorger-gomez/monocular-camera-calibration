@@ -18,13 +18,10 @@
 """
 import numpy as np
 import cv2
-import glob 
 import os
 import argparse
 import sys
-import textwrap
 import json
-import platform
 from numpy.typing import NDArray
 from typing import List, Tuple, Optional
 
@@ -98,18 +95,28 @@ def mouse_callback(event: int, x: int, y: int, flags: int, param: any) -> None:
     """
     global points, drawing
 
-    if event == cv2.EVENT_RBUTTONDOWN:
+    # If left mouse button is clicked, add a point
+    if event == cv2.EVENT_LBUTTONDOWN:
+        points.append((x, y))
+
+    # Right-click to remove points, with Alt+Right-click to clear all points
+    elif event == cv2.EVENT_RBUTTONDOWN:
         if flags & cv2.EVENT_FLAG_ALTKEY:
             if points:
                 points.clear()
         else:
             if points:
                 points.pop()
-    elif event == cv2.EVENT_LBUTTONDOWN:
-        points.append((x,y))
+    
+    # Middle-click behavior depends on the number of points
     elif event == cv2.EVENT_MBUTTONDOWN:
-        points.append(points[0])
-        drawing = True
+        if len(points) > 2:
+            # Close the loop for drawings with more than two points
+            points.append(points[0])
+            drawing = True
+        else:
+            # Allow measurement for 3< points without adding a new line
+            drawing = True        
 
 def undistort_images(frame: NDArray, mtx: NDArray, dist: NDArray) -> NDArray:
     """
@@ -126,7 +133,7 @@ def undistort_images(frame: NDArray, mtx: NDArray, dist: NDArray) -> NDArray:
     # Get size
     h,  w = frame.shape[:2]
 
-    # Get optimal new camera
+    # Get optimal new camera matrix
     newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 0, (w, h))
 
     # Undistort image
@@ -146,12 +153,12 @@ def compute_line_segments(points: List[Tuple[int, int]]) -> List[float]:
     Returns:
         A list of lengths for each line segment.
     """
-    line_length = [] #matriz donde se guardarán las distancias medidas
+    line_length = [] # Matrix to store measured distances
     for i in range(1, len(points)):
         x1, y1 = points[i-1] #punto punto anterior
         x2, y2 = points[i] # punto nuevo
-        length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2) #distancia entre dos puntos
-        line_length.append(length) #agrega dato a matriz
+        length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)  # Distance between two points
+        line_length.append(length) # Add data to matrix
     return line_length
 
 def compute_perimeter(points: List[Tuple[int, int]], z: float, mtx: np.ndarray, height: int, width: int) -> Tuple[List[float], float]:
@@ -181,13 +188,13 @@ def compute_perimeter(points: List[Tuple[int, int]], z: float, mtx: np.ndarray, 
         x1, y1 = points[i-1]
         x2, y2 = points[i]
         
-        # Convertir de píxeles a coordenadas
+        # Convert from pixels to coordinates
         X1 = (x1 - Cx) * z / fx
         Y1 = (y1 - Cy) * z / fy
         X2 = (x2 - Cx) * z / fx
         Y2 = (y2 - Cy) * z / fy
         
-        # Calcular distancia entre puntos
+        # Calculate distance between points
         dist = np.sqrt((X2 - X1)**2 + (Y2 - Y1)**2 )
         distance.append(dist)
 
@@ -211,11 +218,12 @@ def pipeline() -> None:
 
     # Attempt to load the camera calibration parameters
     try:
-        camera_matrix, distortion_coefficients = load_calibration_parameters_from_json_file(args)
+        mtx, dist = load_calibration_parameters_from_json_file(args)
     except FileNotFoundError as e:
         print(e)
         sys.exit(-1)
 
+    # Main loop for drawing and measuring
     while True:
         ret, frame = cam.read()
         if not ret:
@@ -225,10 +233,10 @@ def pipeline() -> None:
         h,w = frame.shape[:2]
 
         if drawing:
-            #calcular distancias y perimetros
+            # Calculate distances and perimeters
             distance,perimeter = compute_perimeter(points, args.z,mtx,h,w)
 
-            # distancias a dos puntos decimales en orden de registro
+            # Display distances with two decimal points in order of selection
             text = "Distancias (puntos seleccionados):\n"
             for i, dist in enumerate(distance, start=1):
                 if i < len(points):
@@ -248,18 +256,19 @@ def pipeline() -> None:
                     text += f"Punto {index+1}-{index+2}: {dist:.2f} cm\n"
 
             print(text)
-            drawing = False  #reiniciar estado del dibujo 
+            drawing = False  # Reset drawing state 
 
-        # Dibujar las líneas entre los puntos seleccionados
+        # Draw lines between selected points
         for i in range(1, len(points)):
             cv2.line(frame, points[i-1], points[i], (0, 255, 0), 1)
 
-        # Dibujar los puntos seleccionados
+        # Draw the selected points
         for point in points:
             cv2.circle(frame, point, 3, (0, 255, 0), -1)
 
         cv2.imshow('Live Camera View', frame)
 
+        # Handling key events for closing or exiting
         # cv2.waitKey(1) returns a 32-bit integer corresponding to the pressed key
         # & 0xFF masks the integer to get the last 8 bits, which correspond to the key code on most systems
         k = cv2.waitKey(1) & 0xFF
