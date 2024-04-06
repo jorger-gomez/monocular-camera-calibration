@@ -155,8 +155,8 @@ def compute_line_segments(points: List[Tuple[int, int]]) -> List[float]:
     """
     line_length = [] # Matrix to store measured distances
     for i in range(1, len(points)):
-        x1, y1 = points[i-1] #punto punto anterior
-        x2, y2 = points[i] # punto nuevo
+        x1, y1 = points[i-1] # Previous Point
+        x2, y2 = points[i] # New point
         length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)  # Distance between two points
         line_length.append(length) # Add data to matrix
     return line_length
